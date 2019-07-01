@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <map>
+#include <vector>
 #include <wbmqtt/utils.h>
 
 using namespace std;
@@ -21,7 +22,8 @@ public:
     inline TOnewireFamilyType GetDeviceFamily() const {return Family;};
     inline const string & GetDeviceId() const {return DeviceId;};
 
-    TMaybe<float> ReadTemperature() const;
+    TMaybe<float> ReadTemperature();
+    int GetLastHourErrorCount() const;
 
     friend bool operator== (const TSysfsOnewireDevice & first, const TSysfsOnewireDevice & second);
 private:
@@ -29,7 +31,8 @@ private:
     TOnewireFamilyType Family;
     string DeviceId;
     string DeviceDir;
-
+    std::vector<int> LastHourErrors;
+    int LastReadTimeMinute;
 
 };
 

@@ -33,6 +33,7 @@ class TMQTTOnewireHandler : public TMQTTWrapper
 		void OnSubscribe(int mid, int qos_count, const int *granted_qos);
 
         inline string GetChannelTopic(const TSysfsOnewireDevice& device);
+				inline string GetChannelErrorTopic(const TSysfsOnewireDevice& device);
         void RescanBus();
 
         void UpdateChannelValues();
@@ -67,6 +68,8 @@ void TMQTTOnewireHandler::OnConnect(int rc)
                 // Meta
         string path = string("/devices/") + MQTTConfig.Id + "/meta/name";
         Publish(NULL, path, "1-wire Thermometers", 0, true);
+				string errors_path = string("/devices/") + MQTTConfig.Id + "_errors/meta/name";
+				Publish(NULL, errors_path, "1-wire Thermometers Errors", 0, true);
 
 
         if (PrepareInit){
@@ -114,7 +117,20 @@ void TMQTTOnewireHandler::RescanBus()
                 StringStartsWith(entry_name, "10-") ||
                 StringStartsWith(entry_name, "22-") )
             {
-                    current_channels.emplace_back(entry_name);
+							      int index = -1;
+										int counter = 0;
+										for(const TSysfsOnewireDevice& device: Channels){
+											if(entry_name == device.GetDeviceId()){
+												index = counter;
+												break;
+											}
+											counter++;
+										}
+										if(index<0){
+                    	current_channels.emplace_back(entry_name);
+										} else {
+											current_channels.emplace_back(Channels[index]);
+										}
             }
         }
         closedir (dir);
@@ -133,12 +149,15 @@ void TMQTTOnewireHandler::RescanBus()
 
     for (const TSysfsOnewireDevice& device: new_channels) {
         Publish(NULL, GetChannelTopic(device) + "/meta/type", "temperature", 0, true);
+				Publish(NULL, GetChannelErrorTopic(device) + "/meta/type", "float", 0, true);
     }
 
     //delete retained messages for absent channels
     for (const TSysfsOnewireDevice& device: absent_channels) {
         Publish(NULL, GetChannelTopic(device) + "/meta/type", "", 0, true);
         Publish(NULL, GetChannelTopic(device), "", 0, true);
+				Publish(NULL, GetChannelErrorTopic(device) + "/meta/type", "", 0, true);
+				Publish(NULL, GetChannelErrorTopic(device), "", 0, true);
     }
 }
 
@@ -171,13 +190,19 @@ string TMQTTOnewireHandler::GetChannelTopic(const TSysfsOnewireDevice& device) {
     return (controls_prefix + device.GetDeviceId());
 }
 
+string TMQTTOnewireHandler::GetChannelErrorTopic(const TSysfsOnewireDevice& device) {
+    static string controls_prefix = string("/devices/") + MQTTConfig.Id + "_errors/controls/";
+    return (controls_prefix + device.GetDeviceId());
+}
+
 void TMQTTOnewireHandler::UpdateChannelValues() {
 
-    for (const TSysfsOnewireDevice& device: Channels) {
+    for (TSysfsOnewireDevice& device: Channels) {
         auto result = device.ReadTemperature();
         if (result.Defined()) {
             Publish(NULL, GetChannelTopic(device), StringFormat("%g",*result), 0, true); // Publish current value (make retained)
         }
+				Publish(NULL, GetChannelErrorTopic(device), StringFormat("%i",device.GetLastHourErrorCount()), 0, true); //Publish current errors count (make retained)
 
     }
 }
